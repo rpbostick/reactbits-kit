@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 (2026-10-03)
+
+- Waves, profile `sheet`: also applies 09-displacement-getter, 10-overscan, 13-noise-module and 14-sample-getter, so the sheet's Waves takes the ripple and the sheet's glide (`displacement`, `overscanX`, `overscanY`) and the spin (`sample`, `patternPeriod`) as the site's does, and keeps its container mouse listeners (11–12). `rbx add Waves --profile sheet` now writes `noise.ts` too.
+- A `coordinates` getter for the nine WebGL backgrounds, profile `sheet`: Aurora 04, Iridescence 05, Galaxy 04, and Threads, Balatro, LiquidChrome, Plasma, SoftAurora and RippleGrid 03-coordinates-getter. Called once per frame, it returns a `CoordinateFrame` (a shift, a turn about a centre and a scale of the whole pattern, and a ripple: a local shift and swirl around one point) or null; the fragment shader reads its starting coordinate through `kitWarp`. The site's set is unchanged.
+- React adapter: a `toyboxState` option (`{ motion, takes }`) maps the drag dynamics toybox's `registerBackground` hands a page's own background (`api.motion`) to those getters: `takes: 'grid'` for Waves, `takes: 'coordinates'` for the other nine. It stands in for `ripple`, `cloth`, `spin` and the drag feed; `pointer` follows toybox's pointer. The mapping is `react/toybox.ts`.
+- `tests/shaders.test.ts` compiles each edited shader in headless Firefox and checks `kitWarp`'s directions; it skips without Firefox.
+
 ## 0.3.0 (2026-10-02)
 
 - Waves, profile `site`: 13-noise-module moves `Grad` and `Noise` into a new `Waves/noise.ts` whose `perlin2` takes a lattice period (default 256, the original wrap), with `NOISE_SCALE` and `noisePeriod`; 14-sample-getter adds a `sample` getter (where each point reads the noise, called before the points move) and a `patternPeriod` prop. `rbx add Waves --profile site` now writes `noise.ts` next to `Waves.tsx`, and `CHANGES.md` says which change moved it there.

@@ -119,6 +119,27 @@ function outOfDependencies(marker: string, removed: string[], kept: string) {
   }
 }
 
+// Expectations for a coordinates change: the prop's type, each of `draws`
+// writes the getter's frame before it renders, and the shader reads `wrapped`
+// through kitWarp.
+function coordinatesAdded(propsType: string, draws: string[], getter: string, wrapped: string) {
+  return ({ tsx }: Output) => {
+    assert.equal(members(tsx, propsType)['coordinates?'], compact('() => CoordinateFrame | null'))
+    const write = compact(`writeCoordinates(program, ${getter}?.() ?? null);`)
+    for (const draw of draws) {
+      const text = body(tsx, draw)
+      assert.ok(text.includes(write), `${draw} lacks ${write}`)
+      assert.ok(text.indexOf(write) < text.indexOf('renderer.render('), `${draw} writes the coordinates after it renders`)
+    }
+    assert.ok(tsx.getFunction('writeCoordinates'), 'no writeCoordinates')
+    const file = compact(tsx.getFullText())
+    includes(file, 'uniform vec4 uKitView;', 'the shader')
+    includes(file, wrapped, 'the shader')
+  }
+}
+
+const COORDINATES = optional({ coordinates: '() => CoordinateFrame | null' })
+
 // Optional members: name → type, as members() reports them.
 function optional(types: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(types).map(([name, type]) => [`${name}?`, compact(type)]))
@@ -260,6 +281,7 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       includes(body(tsx, 'update'), 'clock.last = propsRef.current.paused ? null : t', 'update')
       includes(body(tsx, 'resize'), 'requestFrameRef.current?.()', 'resize')
     },
+    '04-coordinates-getter': coordinatesAdded('AuroraProps', ['update'], 'propsRef.current.coordinates', 'vec2 uv = kitWarp(gl_FragCoord.xy) / uResolution;'),
   },
   Iridescence: {
     '01-accumulated-clock': ({ tsx }) => {
@@ -277,6 +299,7 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       'program.uniforms.uColor.value.set(...current.color)',
     ]),
     '04-color-out-of-deps': outOfDependencies('update', ['color'], 'speed'),
+    '05-coordinates-getter': coordinatesAdded('IridescenceProps', ['update'], 'coordinatesRef.current', '(kitWarpUv(vUv).xy * 2.0 - 1.0)'),
   },
   Threads: {
     '01-params-getter': (out) => {
@@ -286,6 +309,7 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       includes(compact(out.tsx.getText()), 'propsRef.current = { color, amplitude, distance, enableMouseInteraction, params }', 'Threads')
     },
     '02-dpr-cap': ({ tsx }) => includes(body(tsx, 'resize'), 'Math.min(window.devicePixelRatio || 1, 1.5)', 'resize'),
+    '03-coordinates-getter': coordinatesAdded('ThreadsProps', ['update'], 'coordinatesRef.current', 'mainImage(gl_FragColor, kitWarp(gl_FragCoord.xy));'),
   },
   Balatro: {
     '01-params-getter': (out) => {
@@ -297,6 +321,7 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       includes(compact(out.tsx.getText()), 'colorsRef.current = { color1, color2, color3, params }', 'Balatro')
     },
     '02-colors-out-of-deps': outOfDependencies('update', ['color1', 'color2', 'color3'], 'spinRotation'),
+    '03-coordinates-getter': coordinatesAdded('BalatroProps', ['update'], 'coordinatesRef.current', 'vec2 uv = kitWarpUv(vUv) * iResolution.xy;'),
   },
   LiquidChrome: {
     '01-params-getter': paramsAdded('LiquidChrome', 'LiquidChromeProps', '() => { baseColor?: [number, number, number] }', 'update', [
@@ -304,6 +329,7 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       '(program.uniforms.uBaseColor.value as Float32Array).set(current.baseColor)',
     ]),
     '02-color-out-of-deps': outOfDependencies('update', ['baseColor'], 'speed'),
+    '03-coordinates-getter': coordinatesAdded('LiquidChromeProps', ['update'], 'coordinatesRef.current', 'col += renderImage(kitWarpUv(vUv) + offset);'),
   },
   Galaxy: {
     '01-params-getter': paramsAdded('Galaxy', 'GalaxyProps', "() => Partial<Pick<GalaxyProps, 'hueShift' | 'saturation' | 'lightMode'>>", 'update', [
@@ -317,6 +343,7 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       excludes(galaxy, 'gl.clearColor(1, 1, 1, 1)', 'the effect')
       includes(galaxy, 'if (transparent) { gl.enable(gl.BLEND);', 'the effect')
     },
+    '04-coordinates-getter': coordinatesAdded('GalaxyProps', ['update'], 'coordinatesRef.current', 'vec2 uv = (kitWarpUv(vUv) * uResolution.xy - focalPx) / uResolution.y;'),
   },
   Plasma: {
     '01-params-getter': (out) => {
@@ -325,6 +352,7 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       includes(effect(out.tsx, 'loop'), '(program.uniforms.uCustomColor.value as Float32Array).set(hexToRgb(current.color))', 'the effect')
     },
     '02-frame-props-out-of-deps': outOfDependencies('loop', ['color', 'lightMode'], 'speed'),
+    '03-coordinates-getter': coordinatesAdded('PlasmaProps', ['loop', 'renderStaticFrame'], 'coordinatesRef.current', 'mainImage(o, kitWarp(gl_FragCoord.xy));'),
   },
   SoftAurora: {
     '01-params-getter': paramsAdded('SoftAurora', 'SoftAuroraProps', "() => Partial<Pick<SoftAuroraProps, 'color1' | 'color2' | 'lightMode'>>", 'update', [
@@ -333,6 +361,11 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       'program.uniforms.uLightMode.value = current.lightMode ? 1 : 0',
     ]),
     '02-frame-props-out-of-deps': outOfDependencies('update', ['color1', 'color2', 'lightMode'], 'speed'),
+    '03-coordinates-getter': (out) => {
+      coordinatesAdded('SoftAuroraProps', ['update'], 'coordinatesRef.current', 'vec2 uv = kitWarp(gl_FragCoord.xy) / uResolution.y;')(out)
+      // The aurora's glow reads the pixel in a function of its own, which moves too.
+      includes(compact(out.tsx.getFullText()), 'vec2 uv = kitWarp(gl_FragCoord.xy) / uResolution.xy;', 'the shader')
+    },
   },
   RippleGrid: {
     '01-params-getter': paramsAdded('RippleGrid', 'Props', '() => { gridColor?: string; lightMode?: boolean }', 'render', [
@@ -341,6 +374,11 @@ const EXPECTED: Record<string, Record<string, (out: Output) => void>> = {
       'if (frame?.lightMode !== undefined) uniforms.lightMode.value = frame.lightMode',
     ]),
     '02-dpr-cap': ({ tsx }) => includes(effect(tsx, 'render'), 'dpr: Math.min(window.devicePixelRatio, 1.5)', 'the effect'),
+    '03-coordinates-getter': (out) => {
+      coordinatesAdded('Props', ['render'], 'coordinatesRef.current', 'vec2 uv = kitWarpUv(vUv) * 2.0 - 1.0;')(out)
+      // The vignette stays on the screen.
+      includes(compact(out.tsx.getFullText()), 'vec2 vignetteCoords = vUv - 0.5;', 'the shader')
+    },
   },
 }
 
@@ -395,7 +433,7 @@ const IRIDESCENCE_SITE_PROPS: Props = [
 const WAVES_SHEET_PROPS: Props = [
   'WavesProps',
   Object.fromEntries(
-    Object.entries(WAVES_SITE_PROPS[1]).filter(([name]) => !['pointer?', 'displacement?', 'sample?', 'patternPeriod?', 'overscanX?', 'overscanY?'].includes(name)),
+    Object.entries(WAVES_SITE_PROPS[1]).filter(([name]) => name !== 'pointer?'),
   ),
 ]
 
@@ -531,17 +569,22 @@ const RIPPLE_GRID_PROPS: Props = [
 ]
 
 // The props of each project's versions, which its profile's set reproduces.
+// The sheet's WebGL backgrounds also take the coordinates getter.
+function withCoordinates([name, props]: Props): Props {
+  return [name, { ...props, ...COORDINATES }]
+}
+
 const REFERENCE_PROPS: Record<string, Record<Profile, Props>> = {
   Waves: { site: WAVES_SITE_PROPS, sheet: WAVES_SHEET_PROPS },
-  Aurora: { site: AURORA_PROPS, sheet: AURORA_PROPS },
-  Iridescence: { site: IRIDESCENCE_SITE_PROPS, sheet: IRIDESCENCE_SHEET_PROPS },
-  Threads: { site: THREADS_PROPS, sheet: THREADS_PROPS },
-  Balatro: { site: BALATRO_PROPS, sheet: BALATRO_PROPS },
-  LiquidChrome: { site: LIQUID_CHROME_PROPS, sheet: LIQUID_CHROME_PROPS },
-  Galaxy: { site: GALAXY_PROPS, sheet: GALAXY_PROPS },
-  Plasma: { site: PLASMA_PROPS, sheet: PLASMA_PROPS },
-  SoftAurora: { site: SOFT_AURORA_PROPS, sheet: SOFT_AURORA_PROPS },
-  RippleGrid: { site: RIPPLE_GRID_PROPS, sheet: RIPPLE_GRID_PROPS },
+  Aurora: { site: AURORA_PROPS, sheet: withCoordinates(AURORA_PROPS) },
+  Iridescence: { site: IRIDESCENCE_SITE_PROPS, sheet: withCoordinates(IRIDESCENCE_SHEET_PROPS) },
+  Threads: { site: THREADS_PROPS, sheet: withCoordinates(THREADS_PROPS) },
+  Balatro: { site: BALATRO_PROPS, sheet: withCoordinates(BALATRO_PROPS) },
+  LiquidChrome: { site: LIQUID_CHROME_PROPS, sheet: withCoordinates(LIQUID_CHROME_PROPS) },
+  Galaxy: { site: GALAXY_PROPS, sheet: withCoordinates(GALAXY_PROPS) },
+  Plasma: { site: PLASMA_PROPS, sheet: withCoordinates(PLASMA_PROPS) },
+  SoftAurora: { site: SOFT_AURORA_PROPS, sheet: withCoordinates(SOFT_AURORA_PROPS) },
+  RippleGrid: { site: RIPPLE_GRID_PROPS, sheet: withCoordinates(RIPPLE_GRID_PROPS) },
 }
 
 test('the kit covers all ten backgrounds', () => {
@@ -629,6 +672,9 @@ test('a transform whose upstream shape is gone fails by name', { skip: UPSTREAM_
     ['Plasma', 'Plasma.tsx', (text) => text.replace(/const renderStaticFrame/, 'const paintOnce').replace(/renderStaticFrame\(\)/g, 'paintOnce()'), '01-params-getter'],
     ['SoftAurora', 'SoftAurora.tsx', (text) => text.replace(/uLightMode: \{ value:/, 'uTheme: { value:'), '01-params-getter'],
     ['RippleGrid', 'RippleGrid.tsx', (text) => text.replace(/type Props = /, 'type GridProps = ').replace(/React\.FC<Props>/, 'React.FC<GridProps>'), '01-params-getter'],
+    ['Threads', 'Threads.tsx', (text) => text.replace(/precision highp float;/, ''), '03-coordinates-getter'],
+    ['Plasma', 'Plasma.tsx', (text) => text.replace(/gl_FragCoord\.xy/, 'gl_FragCoord.yx'), '03-coordinates-getter'],
+    ['Galaxy', 'Galaxy.tsx', (text) => text.replace(/vec2 uv = \(vUv/, 'vec2 uv = (uv'), '04-coordinates-getter'],
   ]
   for (const [component, file, mutate, failing] of cases) {
     const spec = forProfile(COMPONENTS[component], profileUpTo(COMPONENTS[component], failing).profile)

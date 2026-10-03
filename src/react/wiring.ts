@@ -21,12 +21,16 @@
 //   drag turns the pattern like the inside of a ball, and a fling spins it.
 // Each of the three takes `true` for the module's own constants, which are
 // the site's, or an object overriding some of them.
+// - toyboxState: instead of those three and the drag feed, the dynamics
+//   toybox hands a page's own background (toybox.ts): Waves' displacement
+//   and sample, or the WebGL backgrounds' coordinates.
 import { ClothFollow, FOLLOW, type FollowOptions } from '../modules/clothFollow.ts'
 import { ColorDrive, wheelTicks, type WheelAccumulator } from '../modules/colorDrive.ts'
 import { colorAt, stopsByTheme, type Theme } from '../modules/palette.ts'
 import { attachPointerFeed, PointerFeed, type FeedElement } from '../modules/pointerFeed.ts'
 import { RIPPLE, RippleField, rippleRadius, type Displacement, type GridPoint, type Point, type RippleOptions } from '../modules/rippleField.ts'
 import { SPIN, SphereSpin, type PatternCoordinates, type SpinOptions, type View } from '../modules/sphereSpin.ts'
+import { ToyboxDynamics, type ToyboxState } from './toybox.ts'
 
 export type ColorProp = 'params' | 'lineColor'
 export type PointerMode = 'drag' | 'none' | 'events'
@@ -53,6 +57,8 @@ export interface WiringOptions {
   ripple?: ModuleOption<RippleOptions>
   cloth?: ModuleOption<FollowOptions>
   spin?: ModuleOption<SpinOptions>
+  // Toybox's drag dynamics in place of pointer feed, ripple, cloth and spin.
+  toyboxState?: ToyboxState
   // Whether a wheel over the background steps the colour drive.
   wheel?: boolean
   // Whether a finger's drag stirs the background; by default it scrolls the page.
@@ -135,6 +141,7 @@ export class BackgroundWiring {
   readonly ripple: RippleField | null
   readonly cloth: ClothFollow | null
   readonly spin: SphereSpin | null
+  readonly toybox: ToyboxDynamics | null
   // The furthest the ripple and the cloth together move a point, which Waves
   // must draw beyond each edge (overscanX, overscanY).
   readonly reach: number
@@ -150,6 +157,10 @@ export class BackgroundWiring {
     const ripple = moduleOptions(options.ripple, RIPPLE)
     const cloth = moduleOptions(options.cloth, FOLLOW)
     const spin = moduleOptions(options.spin, SPIN)
+    if (options.toyboxState && (ripple || cloth || spin)) {
+      throw new Error('KitBackground: toyboxState brings its own ripple, sheet and spin; leave ripple, cloth and spin out')
+    }
+    this.toybox = options.toyboxState ? new ToyboxDynamics(options.toyboxState, surface) : null
     this.ripple = ripple ? new RippleField(ripple) : null
     this.cloth = cloth ? new ClothFollow(cloth) : null
     this.spin = spin ? new SphereSpin(spin) : null
@@ -170,6 +181,10 @@ export class BackgroundWiring {
     if ((options.colors === undefined) !== (this.options.colors === undefined)) {
       throw new Error('KitBackground: colors was given or taken away on a mounted background; remount it with a new key')
     }
+    // By identity: the motion is a live object whose readings change.
+    if (options.toyboxState?.motion !== this.options.toyboxState?.motion || options.toyboxState?.takes !== this.options.toyboxState?.takes) {
+      throw new Error('KitBackground: toyboxState changed on a mounted background; remount it with a new key')
+    }
     this.options = options
     this.applyReducedMotion()
   }
@@ -179,8 +194,10 @@ export class BackgroundWiring {
     return this.getters
   }
 
-  // Whether a pointer feed is attached: a drag drives something.
+  // Whether a pointer feed is attached: a drag drives something, and toybox
+  // does not hear it for us.
   get feedsPointer(): boolean {
+    if (this.toybox) return false
     return this.options.pointer !== undefined || this.ripple !== null || this.cloth !== null || this.spin !== null
   }
 
@@ -219,6 +236,7 @@ export class BackgroundWiring {
   // The dragged point, or with momentum its coast, in the surface's own
   // coordinates; null when nothing is dragged.
   localPointer(): Point | null {
+    if (this.toybox) return this.toybox.localPointer()
     if (this.options.momentum === false) return this.feed.current
     const { width, height } = this.surface.rect()
     return this.feed.at(this.surface.now(), { left: 0, top: 0, right: width, bottom: height })
@@ -297,6 +315,7 @@ export class BackgroundWiring {
       getters.sample = (lines: readonly (readonly Point[])[]): PatternCoordinates => spin.sample(lines, this.view(), this.surface.now())
       getters.patternPeriod = { x: spin.period, y: spin.period }
     }
+    if (this.toybox) Object.assign(getters, this.toybox.getters())
     return getters
   }
 

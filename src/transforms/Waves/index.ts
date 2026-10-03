@@ -32,16 +32,20 @@ const transforms = [
 ]
 const shared = [cssVariableFix, lineColorGetter, intersectionObserver, pointerPositionFix, motionGetter, accumulatedClock, pausedProp]
 
-// The site feeds the waves through getters (08-10, 14, with the noise in
-// its own file and periodic, 13); the sheet hands them the drags it reports
-// as mouse events on the container (11-12).
+// Both feed the ripple, the sheet's glide and the spin through getters
+// (09-10, 14, with the noise in its own file and periodic, 13). The site
+// also takes the pointer through a getter (08); the sheet hands the waves the
+// drags it reports as mouse events on the container (11-12).
+const dynamics = [displacementGetter, overscan]
+const spin = [noiseModule, sampleGetter]
+
 export const Waves: ComponentSpec = {
   name: 'Waves',
   upstreamDir: 'src/ts-default/Backgrounds/Waves',
   files: ['Waves.tsx', 'Waves.css'],
   transforms,
   profiles: {
-    site: [...shared, pointerGetter, displacementGetter, overscan, noiseModule, sampleGetter].map((transform) => transform.id),
-    sheet: [...shared, containerPointerListeners, mouseleaveEndsStroke].map((transform) => transform.id),
+    site: [...shared, pointerGetter, ...dynamics, ...spin].map((transform) => transform.id),
+    sheet: [...shared, ...dynamics, containerPointerListeners, mouseleaveEndsStroke, ...spin].map((transform) => transform.id),
   },
 }

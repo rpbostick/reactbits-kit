@@ -1,0 +1,50 @@
+{
+  "name": "@rpbostick/reactbits-kit",
+  "version": "0.3.0",
+  "description": "Our customizations of React Bits components as codemods, applied to upstream code a project fetches itself, plus the modules they use.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "rbx": "bin/rbx.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    },
+    "./modules/*.css": "./dist/modules/*.css",
+    "./modules/*": {
+      "types": "./dist/modules/*.d.ts",
+      "default": "./dist/modules/*.js"
+    },
+    "./react/*": {
+      "types": "./dist/react/*.d.ts",
+      "default": "./dist/react/*.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "prepare": "node scripts/build.js",
+    "test": "node scripts/build.js && bash scripts/fetch-upstream.sh && node --test",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "postcss": "^8.5.28",
+    "ts-morph": "^28.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "ogl": "^1.0.11",
+    "typescript": "^7.0.2"
+  }
+}

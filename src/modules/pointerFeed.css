@@ -1,0 +1,22 @@
+/* Cursors for an element bound with attachPointerFeed (pointerFeed.ts): bare
+   background grabs, since a drag there stirs the waves; what a drag cannot
+   start on (SOLID_SELECTOR) keeps its own cursor. */
+[data-pointer-feed] {
+  cursor: grab;
+}
+
+[data-pointer-feed] [data-solid] {
+  cursor: default;
+}
+
+[data-pointer-feed] :is(button, a, label) {
+  cursor: pointer;
+}
+
+/* A class and an attribute, so it outranks the cursors above. */
+[data-pointer-feed].pointer-feed-dragging,
+[data-pointer-feed].pointer-feed-dragging * {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
